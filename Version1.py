@@ -345,21 +345,23 @@ with tab3:
         p = float((mc_goal >= g["amount"]).sum() / len(mc_goal) * 100.0)
         goals_table.loc[i, "Prob. (approx)"] = f"{p:.1f}%"
     st.dataframe(goals_table, use_container_width=True)
-
-    st.markdown("### SIP shortfall (deterministic approximation)")
-    def deterministic_portfolio_fv(current_investment, monthly_sip, weights, means, default_horizon):
+# -------------------------
+# Deterministic portfolio future value (for SIP shortfall check)
+# -------------------------
+def deterministic_portfolio_fv(current_investment, monthly_sip, weights, means, default_horizon):
     """
-    Calculate deterministic portfolio future value based on weighted average returns.
+    Calculate deterministic portfolio future value based on weighted average expected returns.
     """
     total_months = int(default_horizon * 12)
     fv = current_investment
-    # Calculate average monthly return from weighted means
+    # Calculate weighted average monthly return
     avg_monthly_return = sum(w * m for w, m in zip(weights, means)) / 12
 
     for _ in range(total_months):
         fv = (fv + monthly_sip) * (1 + avg_monthly_return)
 
     return fv
+    st.markdown("### SIP shortfall (deterministic approximation)")
     combined_target = goals_table["amount"].sum()
     det_fv = deterministic_portfolio_fv(current_investment, monthly_sip, weights, means, default_horizon)
     st.write(f"Deterministic future value (current SIP): {fmt_inr(det_fv)}")
