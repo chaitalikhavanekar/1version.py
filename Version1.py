@@ -1,11 +1,13 @@
 # Version1.py
 """
 Version1.py - Live Nifty Robo-Advisor (Streamlit)
-Includes:
- - Live allocation + editable table
- - Monte Carlo (live/cached toggle)
- - Macro tilt: tries MOSPI/RBI sources then falls back to World Bank
- - Rebalance worksheet, deterministic SIP calc, efficient frontier
+Features:
+ - Live allocation recommendation (age / income / risk)
+ - Editable allocation table (user can tweak)
+ - Macro tilt: tries MOSPI/Quandl then falls back to World Bank
+ - SIP projection + Monte Carlo (cache toggle)
+ - Efficient frontier (random portfolios)
+ - Rebalance worksheet (editable holdings -> buy/sell)
 Requirements: streamlit, plotly, yfinance, pandas, numpy, requests
 """
 
@@ -24,9 +26,8 @@ from datetime import datetime
 # Page config & small styles
 # -------------------------
 st.set_page_config(page_title="Live Nifty Robo-Advisor (v1)", layout="wide", initial_sidebar_state="expanded")
-st.markdown("## 💹 Live Nifty Robo-Advisor — Version1")
-st.markdown("Live allocations, macro tilt (inflation & GDP), Monte Carlo, and planner.")
-st.write("")
+st.title("💹 Live Nifty Robo-Advisor — Version1")
+st.write("Live allocations, macro tilt (inflation & GDP), Monte Carlo, and planner.")
 
 # -------------------------
 # Helpers
@@ -57,8 +58,9 @@ with st.sidebar:
         ]
     with st.expander("View / edit goals"):
         goals_df = pd.DataFrame(st.session_state.goals)
-        edited = st.data_editor(goals_df, num_rows="dynamic")
-        st.session_state.goals = edited.to_dict("records")
+        # use data_editor (no num_rows param)
+        edited_goals = st.data_editor(goals_df, hide_index=True, use_container_width=True, key="goals_editor")
+        st.session_state.goals = edited_goals.to_dict("records")
 
     st.markdown("---")
     st.subheader("Investment inputs")
@@ -117,6 +119,7 @@ def robo_allocation(age, income, risk_label, bases=BASELINE_MAP, extra_assets=[]
         if a not in base and a in ASSET_CLASSES:
             base[a] = 2.0
 
+    # age tilt
     age_tilt = 0
     if age < 35:
         age_tilt = 5
@@ -130,6 +133,7 @@ def robo_allocation(age, income, risk_label, bases=BASELINE_MAP, extra_assets=[]
         base["Debt Funds"] = max(0, base.get("Debt Funds", 0) - use_shift)
         base["Large Cap Equity"] = base.get("Large Cap Equity", 0) + use_shift
 
+    # income influence
     if income > 150000:
         base["International Equity"] = base.get("International Equity", 0) + 2
 
@@ -140,25 +144,29 @@ def robo_allocation(age, income, risk_label, bases=BASELINE_MAP, extra_assets=[]
     alloc = {k: round(v / total * 100, 2) for k, v in base.items()}
     return alloc
 
-allocation = robo_allocation(age, monthly_income_input, self_declared_risk)
-alloc_df = pd.DataFrame({"Asset Class": list(allocation.keys()), "Allocation (%)": list(allocation.values())})
+# recommended allocation (calculated)
+recommended_alloc = robo_allocation(age, monthly_income_input, self_declared_risk)
+recommended_df = pd.DataFrame({"Asset Class": list(recommended_alloc.keys()), "Allocation (%)": list(recommended_alloc.values())})
 
-# editable allocation
-alloc_df = st.data_editor(alloc_df, num_rows="dynamic", use_container_width=True)
+st.markdown("## Recommended allocation (based on profile)")
+st.dataframe(recommended_df.set_index("Asset Class"), use_container_width=True)
 
-# auto-rescale if not summing to 100
+# Editable allocation below recommendation
+st.markdown("### Edit allocation (tweak the recommended allocation if you want)")
+alloc_df = st.data_editor(recommended_df, hide_index=True, use_container_width=True, key="alloc_editor")
+
+# normalize allocation for calculations (auto-rescale)
 total_alloc = alloc_df["Allocation (%)"].sum()
 if abs(total_alloc - 100.0) > 0.001:
     st.info(f"Allocation sums to {total_alloc:.2f}%. Rescaling to 100% for calculations.")
     if total_alloc > 0:
         alloc_df["Allocation (%)"] = alloc_df["Allocation (%)"] / total_alloc * 100.0
     else:
-        st.warning("Allocation invalid — reverting to baseline.")
-        allocation = robo_allocation(age, monthly_income_input, self_declared_risk)
-        alloc_df = pd.DataFrame({"Asset Class": list(allocation.keys()), "Allocation (%)": list(allocation.values())})
+        st.warning("Allocation invalid — reverting to recommended baseline.")
+        alloc_df = recommended_df.copy()
 
 # -------------------------
-# Macro fetchers: MOSPI / RBI attempts, then World Bank fallback
+# Macro fetchers: MOSPI / Quandl / World Bank fallback
 # -------------------------
 WB_BASE = "https://api.worldbank.org/v2"
 
@@ -178,10 +186,6 @@ def wb_latest_indicator(country_code, indicator):
         return None, None
 
 def try_quandl_rbi_cpi(api_key):
-    """
-    Optional: If you have a NASDAQ/Quandl API key, use the RBI / Quandl dataset path the user had earlier.
-    Set environment var NASDAQ_API_KEY or pass in as string. Returns (value, year) or (None,None).
-    """
     if not api_key:
         return None, None
     try:
@@ -192,8 +196,6 @@ def try_quandl_rbi_cpi(api_key):
         data = j.get("dataset", {}).get("data", [])
         if not data:
             return None, None
-        # data rows: [date, value, ...] -> newest first usually
-        # pick first non-null value
         for row in data:
             if row and row[1] is not None:
                 return float(row[1]), int(row[0][:4])
@@ -202,26 +204,16 @@ def try_quandl_rbi_cpi(api_key):
         return None, None
 
 def try_mospi_cpi_scrape():
-    """
-    Best-effort MOSPI scraping fallback. MOSPI doesn't provide a simple stable REST API for CPI in all cases,
-    so this is intentionally safe: attempt a few known endpoints, else return (None,None).
-    You can improve by replacing with an institutional data source or API key.
-    """
     try:
-        # Example attempt: MOSPI releases often provide CSVs under 'publication_reports' — try a likely filename.
-        # NOTE: This attempt may fail depending on MOSPI site structure. It's a best-effort placeholder.
         url = "http://mospi.gov.in/sites/default/files/publication_reports/Consumer%20Price%20Indices_0.csv"
         r = requests.get(url, timeout=8)
         if r.status_code == 200 and "CPI" in r.text[:2000]:
-            # naive parse: find last numeric in file
             lines = r.text.splitlines()
-            # look backwards for a numeric-looking line
             for line in reversed(lines[-200:]):
                 toks = [t.strip() for t in line.split(",") if t.strip()]
                 for t in reversed(toks):
                     try:
                         v = float(t)
-                        # return as percent and year unknown (None)
                         return v, None
                     except Exception:
                         continue
@@ -230,46 +222,29 @@ def try_mospi_cpi_scrape():
         return None, None
 
 def get_macro_indicators_combined():
-    """
-    Strategy:
-     1) Try NASDAQ/Quandl RBI dataset if user provided API key (env NASDAQ_API_KEY)
-     2) Try MOSPI CSV scrape (best-effort)
-     3) Fall back to World Bank indicators (inflation & GDP)
-    Returns dict {'inflation': (val,year), 'gdp_growth': (val,year)}
-    """
-    # 1) Quandl/Nasdaq (optional) - uses env var NASDAQ_API_KEY if present
     nasdaq_key = os.environ.get("NASDAQ_API_KEY") or None
+    cpi_val, cpi_year = None, None
     if nasdaq_key:
         try:
             cpi_val, cpi_year = try_quandl_rbi_cpi(nasdaq_key)
-            if cpi_val is not None:
-                # Quandl/RBI CPI is in index points or % depending on dataset - this function assumes percent
-                # If dataset returns index instead, you'll need to convert to YoY.
-                pass
         except Exception:
             cpi_val, cpi_year = None, None
-    else:
-        cpi_val, cpi_year = None, None
 
-    # 2) MOSPI scrape (best-effort)
     if cpi_val is None:
         cpi_val, cpi_year = try_mospi_cpi_scrape()
 
-    # 3) fallback World Bank
     if cpi_val is None:
-        # World Bank CPI annual % indicator code: FP.CPI.TOTL.ZG
         cpi_val, cpi_year = wb_latest_indicator("IND", "FP.CPI.TOTL.ZG")
 
-    # GDP growth: try World Bank directly (more reliable for growth)
     gdp_val, gdp_year = wb_latest_indicator("IND", "NY.GDP.MKTP.KD.ZG")
-
     return {"inflation": (cpi_val, cpi_year), "gdp_growth": (gdp_val, gdp_year)}
 
-# Fetch macros (no top banner as requested)
 with st.spinner("Fetching macro indicators (MOSPI / RBI / World Bank fallback)..."):
     macros = get_macro_indicators_combined()
 inflation_val, inflation_year = macros["inflation"]
 gdp_val, gdp_year = macros["gdp_growth"]
+
+# (Sidebar doesn't show top banner per your request; values are available in macros)
 
 # -------------------------
 # Expected returns & vols (defaults + live blend)
@@ -311,9 +286,7 @@ def apply_macro_tilt_to_returns(base_returns, inflation_pct, gdp_pct, strength=1
     if inflation_pct is None:
         inflation = 0.02
     else:
-        # If MOSPI scrape returned index number (not percent), this treat as percent; you may need to adjust.
-        inflation = inflation_pct / 100.0 if inflation_pct > 5 else inflation_pct / 100.0 if inflation_pct <= 5 else inflation_pct / 100.0
-        # above line intentionally simple — if you see odd numbers, verify source units
+        inflation = inflation_pct / 100.0
     if gdp_pct is None:
         gdp = 0.04
     else:
@@ -339,7 +312,7 @@ def apply_macro_tilt_to_returns(base_returns, inflation_pct, gdp_pct, strength=1
         adj[k] = max(new_v, -0.2)
     return adj
 
-# Build asset metrics
+# Build asset metrics by using the editable allocation list
 asset_returns = {}
 asset_vols = {}
 for row in alloc_df.to_dict("records"):
@@ -365,7 +338,12 @@ alloc_df["Volatility (%)"] = alloc_df["Asset Class"].map(lambda x: asset_vols.ge
 alloc_df["Allocation (₹)"] = alloc_df["Allocation (%)"] / 100.0 * current_investment
 
 st.markdown("### Allocation details")
-st.dataframe(alloc_df.style.format({"Allocation (%)": "{:.2f}", "Exp Return (%)": "{:.2f}%", "Volatility (%)": "{:.2f}%", "Allocation (₹)": "₹{:,.0f}"}), use_container_width=True)
+st.dataframe(alloc_df.style.format({
+    "Allocation (%)": "{:.2f}",
+    "Exp Return (%)": "{:.2f}%",
+    "Volatility (%)": "{:.2f}%",
+    "Allocation (₹)": "₹{:,.0f}"
+}), use_container_width=True)
 
 # -------------------------
 # Portfolio expected return & covariance
@@ -494,12 +472,7 @@ with tab3:
     goals_table["Prob. (approx)"] = None
     for i, g in enumerate(st.session_state.goals):
         sims_goal = max(300, int(mc_sims/4))
-cur_df = st.data_editor(
-    pd.DataFrame(columns=["Asset Class", "Current Value (₹)"]),
-    hide_index=True,
-    use_container_width=True,
-    key="cur_value_editor"
-)
+        mc_goal = monte_carlo_sim(current_investment, monthly_sip, weights, means, cov, g.get("years", default_horizon), sims_goal)
         p = float((mc_goal >= g["amount"]).sum() / len(mc_goal) * 100.0)
         goals_table.loc[i, "Prob. (approx)"] = f"{p:.1f}%"
     st.dataframe(goals_table, use_container_width=True)
@@ -531,24 +504,35 @@ cur_df = st.data_editor(
         st.warning(f"Estimate: increase SIP to ~ {fmt_inr(suggested)} / month to meet combined goals (deterministic).")
 
     st.markdown("---")
-    st.subheader("Rebalance worksheet")
-    st.write("Paste your current holdings (Asset Class, Current Value). App will calculate buy/sell to reach target weights.")
-    cur_df = st.experimental_data_editor(pd.DataFrame(columns=["Asset Class", "Current Value (₹)"]), num_rows="dynamic")
-    if not cur_df.empty:
-        cur_df = cur_df[cur_df["Asset Class"].isin(alloc_df["Asset Class"])]
-        total = cur_df["Current Value (₹)"].sum()
-        if total > 0:
-            target_vals = total * (alloc_df["Allocation (%)"]/100.0).values
-            cur_vals = cur_df.set_index("Asset Class")["Current Value (₹)"].reindex(alloc_df["Asset Class"]).fillna(0).values
-            buy_sell = target_vals - cur_vals
-            reb_df = pd.DataFrame({
-                "Asset Class": alloc_df["Asset Class"],
-                "Target Value (₹)": target_vals,
-                "Current Value (₹)": cur_vals,
-                "Buy(+)/Sell(-) (₹)": buy_sell
-            })
-            st.dataframe(reb_df.style.format({"Target Value (₹)":"₹{:,.0f}","Current Value (₹)":"₹{:,.0f}","Buy(+)/Sell(-) (₹)":"₹{:,.0f}"}), use_container_width=True)
-            st.download_button("Download rebalance CSV", reb_df.to_csv(index=False).encode("utf-8"), file_name="rebalance.csv", mime="text/csv")
+    # Put rebalance worksheet inside an expander for cleanliness
+    with st.expander("Rebalance worksheet (paste your current holdings)"):
+        st.write("Paste your current holdings (Asset Class, Current Value). App will calculate buy/sell to reach target weights.")
+        cur_df = st.data_editor(
+            pd.DataFrame(columns=["Asset Class", "Current Value (₹)"]),
+            hide_index=True,
+            use_container_width=True,
+            key="cur_value_editor"
+        )
+
+        if not cur_df.empty:
+            cur_df = cur_df[cur_df["Asset Class"].isin(alloc_df["Asset Class"])]
+            total = cur_df["Current Value (₹)"].sum()
+            if total > 0:
+                target_vals = total * (alloc_df["Allocation (%)"]/100.0).values
+                cur_vals = cur_df.set_index("Asset Class")["Current Value (₹)"].reindex(alloc_df["Asset Class"]).fillna(0).values
+                buy_sell = target_vals - cur_vals
+                reb_df = pd.DataFrame({
+                    "Asset Class": alloc_df["Asset Class"],
+                    "Target Value (₹)": target_vals,
+                    "Current Value (₹)": cur_vals,
+                    "Buy(+)/Sell(-) (₹)": buy_sell
+                })
+                st.dataframe(reb_df.style.format({
+                    "Target Value (₹)": "₹{:,.0f}",
+                    "Current Value (₹)": "₹{:,.0f}",
+                    "Buy(+)/Sell(-) (₹)": "₹{:,.0f}"
+                }), use_container_width=True)
+                st.download_button("Download rebalance CSV", reb_df.to_csv(index=False).encode("utf-8"), file_name="rebalance.csv", mime="text/csv")
 
     st.markdown("---")
     st.download_button("Download allocation CSV", alloc_df.to_csv(index=False).encode("utf-8"), file_name="allocation.csv", mime="text/csv")
