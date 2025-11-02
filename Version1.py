@@ -494,7 +494,12 @@ with tab3:
     st.markdown("---")
     st.subheader("Rebalance worksheet")
     st.write("Paste your current holdings (Asset Class, Current Value). App will calculate buy/sell to reach target weights.")
-    cur_df = st.experimental_data_editor(pd.DataFrame(columns=["Asset Class", "Current Value (₹)"]), num_rows="dynamic")
+   cur_df = st.data_editor(
+    pd.DataFrame(columns=["Asset Class", "Current Value (₹)"]),
+    hide_index=True,
+    use_container_width=True,
+    key="cur_value_editor"
+)
     if not cur_df.empty:
         cur_df = cur_df[cur_df["Asset Class"].isin(alloc_df["Asset Class"])]
         total = cur_df["Current Value (₹)"].sum()
