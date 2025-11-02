@@ -490,11 +490,10 @@ with tab3:
                 lo = mid
         suggested = int(ceil(hi))
         st.warning(f"Estimate: increase SIP to ~ {fmt_inr(suggested)} / month to meet combined goals (deterministic).")
-
+        
     st.markdown("---")
-    st.subheader("Rebalance worksheet")
-    st.write("Paste your current holdings (Asset Class, Current Value). App will calculate buy/sell to reach target weights.")
-   cur_df = st.data_editor(
+  st.write("Paste your current holdings (Asset Class, Current Value). App will calculate buy/sell to reach target weights.")
+cur_df = st.data_editor(
     pd.DataFrame(columns=["Asset Class", "Current Value (₹)"]),
     hide_index=True,
     use_container_width=True,
