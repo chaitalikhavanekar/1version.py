@@ -1,17 +1,20 @@
 # Version1.py
 """
-Version1.py - Live Nifty Robo-Advisor (Streamlit)
+Live Nifty Robo-Advisor (Version1) - Streamlit
 Features:
- - Live allocation recommendation (age / income / risk)
- - Editable allocation table (user can tweak)
- - Macro tilt: tries MOSPI/Quandl then falls back to World Bank
+ - Profile-based recommended allocation (age, income, risk)
+ - Editable allocation table (tweak recommendation)
+ - Macro tilt (MOSPI/Quandl fallback -> World Bank)
  - SIP projection + Monte Carlo (cache toggle)
  - Efficient frontier (random portfolios)
  - Rebalance worksheet (editable holdings -> buy/sell)
-Requirements: streamlit, plotly, yfinance, pandas, numpy, requests
+Requirements: streamlit, pandas, numpy, plotly, yfinance, requests
 """
 
 import os
+from math import ceil
+from datetime import datetime
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -19,15 +22,15 @@ import plotly.express as px
 import plotly.graph_objects as go
 import yfinance as yf
 import requests
-from math import ceil
-from datetime import datetime
+
 
 # -------------------------
-# Page config & small styles
+# Page config & header
 # -------------------------
 st.set_page_config(page_title="Live Nifty Robo-Advisor (v1)", layout="wide", initial_sidebar_state="expanded")
 st.title("💹 Live Nifty Robo-Advisor — Version1")
 st.write("Live allocations, macro tilt (inflation & GDP), Monte Carlo, and planner.")
+
 
 # -------------------------
 # Helpers
@@ -41,14 +44,16 @@ def fmt_inr(v):
         except Exception:
             return str(v)
 
+
 # -------------------------
-# Sidebar: profile, toggles & macro panel
+# Sidebar: profile & settings
 # -------------------------
 with st.sidebar:
     st.header("Profile & Settings")
     age = st.slider("Age", 18, 75, 34)
     monthly_income_input = st.number_input("Monthly income (₹)", min_value=0, value=70000, step=5000)
     self_declared_risk = st.selectbox("Risk appetite", ["Low", "Moderate", "High"])
+
     st.markdown("---")
     st.subheader("Goal settings")
     if "goals" not in st.session_state:
@@ -58,26 +63,23 @@ with st.sidebar:
         ]
     with st.expander("View / edit goals"):
         goals_df = pd.DataFrame(st.session_state.goals)
-        # use data_editor (no num_rows param)
         edited_goals = st.data_editor(goals_df, hide_index=True, use_container_width=True, key="goals_editor")
+        # store back
         st.session_state.goals = edited_goals.to_dict("records")
 
     st.markdown("---")
     st.subheader("Investment inputs")
     current_investment = st.number_input("Current invested (lump sum ₹)", min_value=0, value=500000, step=10000)
     use_sip = st.checkbox("Use monthly SIP", value=True)
-    if use_sip:
-        monthly_sip = st.number_input("Monthly SIP (₹)", min_value=0, value=10000, step=500)
-    else:
-        monthly_sip = 0
+    monthly_sip = st.number_input("Monthly SIP (₹)", min_value=0, value=10000, step=500) if use_sip else 0
     default_horizon = st.slider("Default horizon (yrs)", 1, 40, 10)
 
     st.markdown("---")
-    st.subheader("Computation limits & behavior")
+    st.subheader("Computation & behavior")
     mc_sims = st.slider("Monte Carlo simulations", 200, 4000, 1200, step=100)
     frontier_samples = st.slider("Efficient frontier samples", 50, 2000, 400, step=50)
     lookback_years = st.selectbox("Live-data lookback (yrs)", [1, 3, 5], index=2)
-    cache_mc = st.checkbox("Cache Monte Carlo (faster UX, fewer recalcs)", value=False)
+    cache_mc = st.checkbox("Cache Monte Carlo (faster UX)", value=False)
 
     st.markdown("---")
     st.subheader("Ticker overrides (optional)")
@@ -87,12 +89,13 @@ with st.sidebar:
 
     st.markdown("---")
     st.subheader("Macro tilt settings")
-    st.write("Macro tilt uses inflation & GDP (MOSPI/RBI if available, else World Bank).")
+    st.write("Macro tilt uses CPI & GDP (MOSPI/Quandl fallback -> World Bank).")
     apply_macro_tilt = st.checkbox("Apply macro tilt to expected returns", value=True)
-    tilt_strength = st.slider("Macro tilt strength (0 = off, 1 = default)", 0.0, 2.0, 1.0, step=0.1)
+    tilt_strength = st.slider("Macro tilt strength", 0.0, 2.0, 1.0, step=0.1)
+
 
 # -------------------------
-# Asset universe & baseline
+# Asset universe & baseline templates
 # -------------------------
 ASSET_CLASSES = [
     "Large Cap Equity", "Mid/Small Cap Equity", "International Equity", "Index ETFs",
@@ -110,6 +113,7 @@ BASELINE_MAP = {
              "Debt Funds": 10, "Gold ETF": 5, "REITs": 3, "Cash / Liquid": 2, "Crypto (speculative)": 0}
 }
 
+
 # -------------------------
 # Robo-allocation engine
 # -------------------------
@@ -119,7 +123,7 @@ def robo_allocation(age, income, risk_label, bases=BASELINE_MAP, extra_assets=[]
         if a not in base and a in ASSET_CLASSES:
             base[a] = 2.0
 
-    # age tilt
+    # age tilt: younger -> slightly more equity; older -> more debt
     age_tilt = 0
     if age < 35:
         age_tilt = 5
@@ -133,7 +137,7 @@ def robo_allocation(age, income, risk_label, bases=BASELINE_MAP, extra_assets=[]
         base["Debt Funds"] = max(0, base.get("Debt Funds", 0) - use_shift)
         base["Large Cap Equity"] = base.get("Large Cap Equity", 0) + use_shift
 
-    # income influence
+    # income influence (higher income -> slightly more international)
     if income > 150000:
         base["International Equity"] = base.get("International Equity", 0) + 2
 
@@ -141,21 +145,23 @@ def robo_allocation(age, income, risk_label, bases=BASELINE_MAP, extra_assets=[]
     if total <= 0:
         base = bases["Moderate"].copy()
         total = sum(base.values())
+
     alloc = {k: round(v / total * 100, 2) for k, v in base.items()}
     return alloc
 
-# recommended allocation (calculated)
+
+# recommended allocation (based on profile)
 recommended_alloc = robo_allocation(age, monthly_income_input, self_declared_risk)
 recommended_df = pd.DataFrame({"Asset Class": list(recommended_alloc.keys()), "Allocation (%)": list(recommended_alloc.values())})
 
-st.markdown("## Recommended allocation (based on profile)")
+st.markdown("## Recommended allocation (based on your profile)")
 st.dataframe(recommended_df.set_index("Asset Class"), use_container_width=True)
 
-# Editable allocation below recommendation
-st.markdown("### Edit allocation (tweak the recommended allocation if you want)")
+# Editable allocation below recommendation (user may tweak)
+st.markdown("### Edit allocation (tweak recommended allocation)")
 alloc_df = st.data_editor(recommended_df, hide_index=True, use_container_width=True, key="alloc_editor")
 
-# normalize allocation for calculations (auto-rescale)
+# Normalize allocation for calculations: rescale to 100 if sum differs
 total_alloc = alloc_df["Allocation (%)"].sum()
 if abs(total_alloc - 100.0) > 0.001:
     st.info(f"Allocation sums to {total_alloc:.2f}%. Rescaling to 100% for calculations.")
@@ -165,10 +171,12 @@ if abs(total_alloc - 100.0) > 0.001:
         st.warning("Allocation invalid — reverting to recommended baseline.")
         alloc_df = recommended_df.copy()
 
+
 # -------------------------
-# Macro fetchers: MOSPI / Quandl / World Bank fallback
+# Macro fetchers (MOSPI/Quandl -> World Bank fallback)
 # -------------------------
 WB_BASE = "https://api.worldbank.org/v2"
+
 
 def wb_latest_indicator(country_code, indicator):
     try:
@@ -184,6 +192,7 @@ def wb_latest_indicator(country_code, indicator):
         return None, None
     except Exception:
         return None, None
+
 
 def try_quandl_rbi_cpi(api_key):
     if not api_key:
@@ -203,7 +212,9 @@ def try_quandl_rbi_cpi(api_key):
     except Exception:
         return None, None
 
+
 def try_mospi_cpi_scrape():
+    # best-effort MOSPI CSV attempt; may fail for many deployments (kept as fallback)
     try:
         url = "http://mospi.gov.in/sites/default/files/publication_reports/Consumer%20Price%20Indices_0.csv"
         r = requests.get(url, timeout=8)
@@ -221,9 +232,11 @@ def try_mospi_cpi_scrape():
     except Exception:
         return None, None
 
+
 def get_macro_indicators_combined():
     nasdaq_key = os.environ.get("NASDAQ_API_KEY") or None
     cpi_val, cpi_year = None, None
+
     if nasdaq_key:
         try:
             cpi_val, cpi_year = try_quandl_rbi_cpi(nasdaq_key)
@@ -239,15 +252,15 @@ def get_macro_indicators_combined():
     gdp_val, gdp_year = wb_latest_indicator("IND", "NY.GDP.MKTP.KD.ZG")
     return {"inflation": (cpi_val, cpi_year), "gdp_growth": (gdp_val, gdp_year)}
 
+
 with st.spinner("Fetching macro indicators (MOSPI / RBI / World Bank fallback)..."):
     macros = get_macro_indicators_combined()
 inflation_val, inflation_year = macros["inflation"]
 gdp_val, gdp_year = macros["gdp_growth"]
 
-# (Sidebar doesn't show top banner per your request; values are available in macros)
 
 # -------------------------
-# Expected returns & vols (defaults + live blend)
+# Expected returns & volatilities (defaults + live blend)
 # -------------------------
 DEFAULT_RET = {
     "Large Cap Equity": 0.10, "Mid/Small Cap Equity": 0.13, "International Equity": 0.09,
@@ -263,7 +276,8 @@ TICKER_MAP = {
     "International Equity": t_international or "VTI"
 }
 
-@st.cache_data(ttl=60*30)
+
+@st.cache_data(ttl=60 * 30)
 def get_cagr_vol_for_ticker(ticker, years=5):
     if not ticker:
         return None, None
@@ -280,6 +294,7 @@ def get_cagr_vol_for_ticker(ticker, years=5):
         return float(cagr), float(vol)
     except Exception:
         return None, None
+
 
 def apply_macro_tilt_to_returns(base_returns, inflation_pct, gdp_pct, strength=1.0):
     adj = base_returns.copy()
@@ -312,7 +327,8 @@ def apply_macro_tilt_to_returns(base_returns, inflation_pct, gdp_pct, strength=1
         adj[k] = max(new_v, -0.2)
     return adj
 
-# Build asset metrics by using the editable allocation list
+
+# Build asset metrics using the (possibly edited) allocation list
 asset_returns = {}
 asset_vols = {}
 for row in alloc_df.to_dict("records"):
@@ -345,6 +361,7 @@ st.dataframe(alloc_df.style.format({
     "Allocation (₹)": "₹{:,.0f}"
 }), use_container_width=True)
 
+
 # -------------------------
 # Portfolio expected return & covariance
 # -------------------------
@@ -359,24 +376,29 @@ np.fill_diagonal(cov, vols ** 2)
 port_return = float(np.dot(weights, means))
 port_vol = float(np.sqrt(weights @ cov @ weights))
 
+
 # -------------------------
 # Risk metrics
 # -------------------------
 rf_rate = 0.04
 
+
 def sharpe_like(mu, vol, rf=rf_rate):
     return (mu - rf) / (vol + 1e-9)
+
 
 def sortino_like(means_vec, rf=rf_rate):
     downside = np.sqrt(np.mean(np.minimum(0, means_vec - rf) ** 2))
     mu = np.mean(means_vec)
     return (mu - rf) / (downside + 1e-9)
 
+
 sh = sharpe_like(port_return, port_vol)
 so = sortino_like(means)
 
+
 # -------------------------
-# Monte Carlo
+# Monte Carlo simulation
 # -------------------------
 def monte_carlo_sim(invest, monthly_sip, weights_vec, means_vec, cov_mat, years, sims, seed=None):
     if seed is not None:
@@ -397,8 +419,9 @@ def monte_carlo_sim(invest, monthly_sip, weights_vec, means_vec, cov_mat, years,
         results[s] = asset_vals.sum()
     return results
 
+
 if cache_mc:
-    monte_carlo_sim = st.cache_data(ttl=60*5)(monte_carlo_sim)
+    monte_carlo_sim = st.cache_data(ttl=60 * 5)(monte_carlo_sim)
 
 with st.spinner("Running Monte Carlo simulation..."):
     mc = monte_carlo_sim(current_investment, monthly_sip, weights, means, cov, default_horizon, mc_sims)
@@ -408,13 +431,15 @@ median_end = float(np.median(mc))
 p10 = float(np.percentile(mc, 10))
 p90 = float(np.percentile(mc, 90))
 
+
 # -------------------------
-# Efficient frontier
+# Efficient frontier (random portfolios)
 # -------------------------
 def random_weights(n, samples):
     r = np.random.random((samples, n))
     r /= r.sum(axis=1)[:, None]
     return r
+
 
 samples = min(max(50, frontier_samples), 2000)
 rand_w = random_weights(len(weights), samples)
@@ -422,8 +447,9 @@ ef_returns = rand_w.dot(means)
 ef_vols = np.sqrt(np.einsum('ij,jk,ik->i', rand_w, cov, rand_w))
 ef_sharpe = (ef_returns - rf_rate) / (ef_vols + 1e-9)
 
+
 # -------------------------
-# UI Tabs
+# UI Tabs: summary, visuals, planner
 # -------------------------
 tab1, tab2, tab3 = st.tabs(["Summary", "Visuals", "Planner & Actions"])
 
@@ -434,8 +460,9 @@ with tab1:
     c2.metric("Est. volatility (σ)", f"{port_vol*100:.2f}%")
     c3.metric(f"Median MC end ({default_horizon}y)", fmt_inr(median_end))
     c4.metric("Prob. meet combined goals", f"{prob_meet:.1f}%")
+
     st.markdown("#### Allocation (editable)")
-    st.dataframe(alloc_df[["Asset Class","Allocation (%)","Allocation (₹)"]].set_index("Asset Class"), use_container_width=True)
+    st.dataframe(alloc_df[["Asset Class", "Allocation (%)", "Allocation (₹)"]].set_index("Asset Class"), use_container_width=True)
 
 with tab2:
     st.header("Interactive visuals")
@@ -453,9 +480,9 @@ with tab2:
 
     with col_b:
         st.subheader("Efficient frontier (samples)")
-        ef_df = pd.DataFrame({"Return": ef_returns*100, "Volatility": ef_vols*100, "Sharpe": ef_sharpe})
+        ef_df = pd.DataFrame({"Return": ef_returns * 100, "Volatility": ef_vols * 100, "Sharpe": ef_sharpe})
         fig_ef = px.scatter(ef_df, x="Volatility", y="Return", color="Sharpe", color_continuous_scale="Viridis")
-        fig_ef.add_trace(go.Scatter(x=[port_vol*100], y=[port_return*100], mode="markers+text",
+        fig_ef.add_trace(go.Scatter(x=[port_vol * 100], y=[port_return * 100], mode="markers+text",
                                    marker=dict(size=14, color="gold"), text=["Your portfolio"], textposition="top center"))
         fig_ef.update_layout(paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig_ef, use_container_width=True)
@@ -471,12 +498,13 @@ with tab3:
     goals_table = pd.DataFrame(st.session_state.goals)
     goals_table["Prob. (approx)"] = None
     for i, g in enumerate(st.session_state.goals):
-        sims_goal = max(300, int(mc_sims/4))
+        sims_goal = max(300, int(mc_sims / 4))
         mc_goal = monte_carlo_sim(current_investment, monthly_sip, weights, means, cov, g.get("years", default_horizon), sims_goal)
         p = float((mc_goal >= g["amount"]).sum() / len(mc_goal) * 100.0)
         goals_table.loc[i, "Prob. (approx)"] = f"{p:.1f}%"
     st.dataframe(goals_table, use_container_width=True)
 
+    # Deterministic portfolio FV (SIP)
     def deterministic_portfolio_fv(current_investment, monthly_sip, weights, means, years):
         weighted_annual = float(np.dot(weights, means))
         monthly_return = (1 + weighted_annual) ** (1.0 / 12.0) - 1.0
@@ -504,7 +532,7 @@ with tab3:
         st.warning(f"Estimate: increase SIP to ~ {fmt_inr(suggested)} / month to meet combined goals (deterministic).")
 
     st.markdown("---")
-    # Put rebalance worksheet inside an expander for cleanliness
+    # Rebalance worksheet inside an expander
     with st.expander("Rebalance worksheet (paste your current holdings)"):
         st.write("Paste your current holdings (Asset Class, Current Value). App will calculate buy/sell to reach target weights.")
         cur_df = st.data_editor(
@@ -518,7 +546,7 @@ with tab3:
             cur_df = cur_df[cur_df["Asset Class"].isin(alloc_df["Asset Class"])]
             total = cur_df["Current Value (₹)"].sum()
             if total > 0:
-                target_vals = total * (alloc_df["Allocation (%)"]/100.0).values
+                target_vals = total * (alloc_df["Allocation (%)"] / 100.0).values
                 cur_vals = cur_df.set_index("Asset Class")["Current Value (₹)"].reindex(alloc_df["Asset Class"]).fillna(0).values
                 buy_sell = target_vals - cur_vals
                 reb_df = pd.DataFrame({
@@ -536,6 +564,7 @@ with tab3:
 
     st.markdown("---")
     st.download_button("Download allocation CSV", alloc_df.to_csv(index=False).encode("utf-8"), file_name="allocation.csv", mime="text/csv")
+
 
 st.markdown("---")
 st.caption("Educational tool — not investment advice. Verify tickers, tax treatment and instrument choices before acting.")
