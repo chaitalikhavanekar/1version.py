@@ -178,6 +178,12 @@ button[data-baseweb="tab"][aria-selected="true"] {
     color: #000000 !important;
 }
 
+/* Fix text clipping / overlapping */
+[data-testid="stDataFrame"] * {
+    line-height: 1.4 !important;
+    white-space: nowrap !important;
+}
+
 /* Small caption text (disclaimer) */
 footer, .stCaption, .stMarkdown p small {
     font-size: 0.72rem !important;
