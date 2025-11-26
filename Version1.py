@@ -22,12 +22,84 @@ import plotly.express as px
 import plotly.graph_objects as go
 import yfinance as yf
 import requests
+import plotly.io as pio
+
+pio.templates["moon"] = pio.templates["plotly_dark"]
+
+pio.templates["moon"].layout.update(
+    font=dict(color="#F5D5E0"),
+    colorway=["#F5D5E0", "#6667AB", "#7B337E", "#420D4B", "#210635"],
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+)
+
+pio.templates.default = "moon"
+
 
 
 # -------------------------
 # Page config & header
 # -------------------------
 st.set_page_config(page_title="Live Nifty Robo-Advisor (v1)", layout="wide", initial_sidebar_state="expanded")
+# -------------------------
+# Moon Theme (Short Version)
+# -------------------------
+st.markdown("""
+<style>
+
+:root {
+    --moon-light: #F5D5E0;
+    --moon-blue: #6667AB;
+    --moon-purple: #7B337E;
+    --moon-deep: #420D4B;
+    --moon-dark: #210635;
+}
+
+/* Background */
+.stApp {
+    background: linear-gradient(160deg, #210635 0%, #420D4B 40%, #7B337E 80%) !important;
+    color: var(--moon-light) !important;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #210635 0%, #420D4B 100%) !important;
+    color: var(--moon-light) !important;
+}
+section[data-testid="stSidebar"] * {
+    color: var(--moon-light) !important;
+}
+
+/* Headers */
+h1, h2, h3, h4, h5 {
+    color: var(--moon-light) !important;
+}
+
+/* Buttons */
+.stButton>button, .stDownloadButton>button {
+    background: linear-gradient(135deg, #7B337E, #6667AB) !important;
+    color: #F5D5E0 !important;
+    border: none !important;
+    border-radius: 8px !important;
+}
+.stButton>button:hover, .stDownloadButton>button:hover {
+    background: linear-gradient(135deg, #F5D5E0, #7B337E) !important;
+    color: #210635 !important;
+}
+
+/* Inputs */
+input, select, textarea {
+    background-color: #210635 !important;
+    color: var(--moon-light) !important;
+    border-radius: 6px !important;
+}
+
+/* Tables & DataFrames */
+[data-testid="stDataFrame"] table {
+    color: var(--moon-light) !important;
+}
+</style>
+""", unsafe_allow_html=True)
 st.title("💹 Live Nifty Robo-Advisor — Version1")
 st.write("Live allocations, macro tilt (inflation & GDP), Monte Carlo, and planner.")
 
