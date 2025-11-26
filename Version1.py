@@ -42,37 +42,49 @@ pio.templates.default = "moon"
 # -------------------------
 st.set_page_config(page_title="Live Nifty Robo-Advisor (v1)", layout="wide", initial_sidebar_state="expanded")
 # -------------------------
-# Moon Theme (Short Version)
+# -------------------------
+# Moon Theme – Polished UI (fonts + tables)
 # -------------------------
 st.markdown("""
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
 
 :root {
     --moon-light: #F5D5E0;
-    --moon-blue: #6667AB;
-    --moon-purple: #7B337E;
-    --moon-deep: #420D4B;
-    --moon-dark: #210635;
+    --moon-blue:  #6667AB;
+    --moon-purple:#7B337E;
+    --moon-deep:  #420D4B;
+    --moon-dark:  #210635;
 }
 
-/* Background */
+/* Global font + background */
+* {
+    font-family: 'Poppins', sans-serif !important;
+}
 .stApp {
-    background: linear-gradient(160deg, #210635 0%, #420D4B 40%, #7B337E 80%) !important;
+    background: radial-gradient(circle at top left, #7B337E 0%, #210635 45%, #000000 100%) !important;
     color: var(--moon-light) !important;
 }
 
 /* Sidebar */
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #210635 0%, #420D4B 100%) !important;
+    background: linear-gradient(180deg, #210635 0%, #420D4B 60%, #210635 100%) !important;
     color: var(--moon-light) !important;
 }
 section[data-testid="stSidebar"] * {
     color: var(--moon-light) !important;
+    font-size: 0.9rem !important;
+    font-weight: 500 !important;
 }
 
 /* Headers */
-h1, h2, h3, h4, h5 {
-    color: var(--moon-light) !important;
+h1 {
+    font-size: 2.1rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.03em;
+}
+h2, h3 {
+    font-weight: 600 !important;
 }
 
 /* Buttons */
@@ -80,24 +92,88 @@ h1, h2, h3, h4, h5 {
     background: linear-gradient(135deg, #7B337E, #6667AB) !important;
     color: #F5D5E0 !important;
     border: none !important;
-    border-radius: 8px !important;
+    border-radius: 999px !important;
+    padding: 0.35rem 1.1rem !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
 }
 .stButton>button:hover, .stDownloadButton>button:hover {
     background: linear-gradient(135deg, #F5D5E0, #7B337E) !important;
     color: #210635 !important;
+    box-shadow: 0 0 12px rgba(245, 213, 224, 0.7) !important;
 }
 
-/* Inputs */
+/* Inputs (number, text, select, sliders labels) */
 input, select, textarea {
     background-color: #210635 !important;
     color: var(--moon-light) !important;
-    border-radius: 6px !important;
+    border-radius: 8px !important;
+    border: 1px solid rgba(245, 213, 224, 0.35) !important;
+    font-weight: 500 !important;
+    font-size: 0.9rem !important;
+}
+input:focus, select:focus, textarea:focus {
+    outline: none !important;
+    box-shadow: 0 0 0 1px #F5D5E0 !important;
 }
 
-/* Tables & DataFrames */
-[data-testid="stDataFrame"] table {
-    color: var(--moon-light) !important;
+/* Metric cards */
+div[data-testid="metric-container"] {
+    background: rgba(33, 6, 53, 0.9) !important;
+    border-radius: 12px !important;
+    padding: 10px !important;
+    border: 1px solid rgba(245, 213, 224, 0.25) !important;
 }
+
+/* Tabs */
+button[data-baseweb="tab"] {
+    background-color: transparent !important;
+    color: #F5D5E0 !important;
+    border-radius: 999px !important;
+    font-weight: 500 !important;
+}
+button[data-baseweb="tab"][aria-selected="true"] {
+    background: linear-gradient(135deg, #7B337E, #6667AB) !important;
+    color: #F5D5E0 !important;
+}
+
+/* DataFrames / tables */
+[data-testid="stDataFrame"] {
+    background-color: rgba(15, 4, 30, 0.85) !important;
+    border-radius: 12px !important;
+    padding: 4px !important;
+}
+[data-testid="stDataFrame"] table {
+    font-size: 0.85rem !important;
+    color: var(--moon-light) !important;
+    border-collapse: collapse !important;
+}
+[data-testid="stDataFrame"] thead tr th {
+    background-color: rgba(10, 3, 25, 0.95) !important;
+    font-weight: 600 !important;
+    padding: 6px 8px !important;
+    border-bottom: 1px solid rgba(245, 213, 224, 0.35) !important;
+}
+[data-testid="stDataFrame"] tbody tr:nth-child(odd) {
+    background-color: rgba(33, 6, 53, 0.9) !important;
+}
+[data-testid="stDataFrame"] tbody tr:nth-child(even) {
+    background-color: rgba(24, 4, 40, 0.9) !important;
+}
+[data-testid="stDataFrame"] tbody tr td {
+    border-bottom: 1px solid rgba(245, 213, 224, 0.15) !important;
+    padding: 5px 8px !important;
+}
+[data-testid="stDataFrame"] tbody tr:hover td {
+    background-color: rgba(123, 51, 126, 0.6) !important;
+}
+
+/* Small caption text (disclaimer) */
+footer, .stCaption, .stMarkdown p small {
+    font-size: 0.72rem !important;
+    opacity: 0.8;
+}
+
 </style>
 """, unsafe_allow_html=True)
 st.title("💹 Live Nifty Robo-Advisor — Version1")
