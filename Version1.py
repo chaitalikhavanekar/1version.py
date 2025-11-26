@@ -178,16 +178,26 @@ button[data-baseweb="tab"][aria-selected="true"] {
     color: #000000 !important;
 }
 
-/* Fix text clipping / overlapping */
-[data-testid="stDataFrame"] * {
-    line-height: 1.4 !important;
-    white-space: nowrap !important;
-}
 
 /* Small caption text (disclaimer) */
 footer, .stCaption, .stMarkdown p small {
     font-size: 0.72rem !important;
     opacity: 0.8;
+}
+
+/* Fix overlapping in text inputs and data_editor */
+div[data-baseweb="input"] *,
+textarea,
+input[type="text"],
+input[type="number"] {
+    white-space: normal !important;
+    line-height: 1.3 !important;
+}
+
+/* Remove ghost/duplicate label in st.data_editor */
+[data-testid="stDataEditor"] div[role="textbox"] {
+    overflow: visible !important;
+    white-space: normal !important;
 }
 
 </style>
