@@ -143,29 +143,39 @@ button[data-baseweb="tab"][aria-selected="true"] {
     border-radius: 12px !important;
     padding: 4px !important;
 }
+/* TABLE BACKGROUND + FONT FIX */
+[data-testid="stDataFrame"] {
+    background-color: #F5D5E0 !important;
+    border-radius: 12px !important;
+    padding: 6px !important;
+    border: 2px solid #000000 !important;
+}
+
 [data-testid="stDataFrame"] table {
-    font-size: 0.85rem !important;
-    color: var(--moon-light) !important;
+    background-color: #F5D5E0 !important;
+    color: #000000 !important;
+    font-size: 0.9rem !important;
     border-collapse: collapse !important;
 }
+
 [data-testid="stDataFrame"] thead tr th {
-    background-color: rgba(10, 3, 25, 0.95) !important;
-    font-weight: 600 !important;
-    padding: 6px 8px !important;
-    border-bottom: 1px solid rgba(245, 213, 224, 0.35) !important;
+    background-color: #F5D5E0 !important;
+    color: #000000 !important;
+    font-weight: 700 !important;
+    padding: 8px !important;
+    border-bottom: 2px solid #000000 !important;
 }
-[data-testid="stDataFrame"] tbody tr:nth-child(odd) {
-    background-color: rgba(33, 6, 53, 0.9) !important;
-}
-[data-testid="stDataFrame"] tbody tr:nth-child(even) {
-    background-color: rgba(24, 4, 40, 0.9) !important;
-}
+
 [data-testid="stDataFrame"] tbody tr td {
-    border-bottom: 1px solid rgba(245, 213, 224, 0.15) !important;
-    padding: 5px 8px !important;
+    background-color: #F5D5E0 !important;
+    color: #000000 !important;
+    padding: 6px 10px !important;
+    border-bottom: 1px solid #000000 !important;
 }
+
 [data-testid="stDataFrame"] tbody tr:hover td {
-    background-color: rgba(123, 51, 126, 0.6) !important;
+    background-color: #F5D5E0 !important;
+    color: #000000 !important;
 }
 
 /* Small caption text (disclaimer) */
